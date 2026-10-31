@@ -240,8 +240,13 @@ if _HERMES_AVAILABLE:
             timeout: float = 8.0,
         ) -> list[str] | None:
             _ensure_subscription_key()
+            # The picker calls fetch_models() with no key; without the cached
+            # login key the catalog request is unauthenticated and only
+            # fallback_models is ever offered. An explicit key still wins.
             live = super().fetch_models(
-                api_key=api_key, base_url=base_url, timeout=timeout
+                api_key=api_key or os.getenv(ENV_VAR, "").strip() or read_cached_key(),
+                base_url=base_url,
+                timeout=timeout,
             )
             if live is None:
                 return None

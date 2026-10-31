@@ -396,6 +396,42 @@ def test_fetch_models_admits_live_catalog_dynamically(tmp_path, monkeypatch):
         assert profile.fetch_models(api_key="k") is None
 
 
+def test_fetch_models_uses_cached_key_when_none_passed(tmp_path, monkeypatch):
+    """The picker calls fetch_models() with no key; the cached login key must
+    still authorize the live catalog (otherwise only fallback_models is offered)."""
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps({"apiKey": "LLM|picker-key", "accountId": "uid-1"}))
+    monkeypatch.setenv("MUSE_CODE_SUB_CREDENTIALS", str(cache))
+    _, registered = _load_plugin()
+    profile = registered["muse-code"]
+    seen = {}
+
+    def fake_fetch(self, **kwargs):
+        seen.update(kwargs)
+        return ["muse-spark-1.3", "muse-spark-1.3-contributor", "sam-3.1"]
+
+    with patch.object(type(profile).__mro__[1], "fetch_models", fake_fetch):
+        assert profile.fetch_models() == ["muse-spark-1.3", "muse-spark-1.3-contributor"]
+    assert seen.get("api_key") == "LLM|picker-key"
+
+
+def test_fetch_models_prefers_explicit_key(tmp_path, monkeypatch):
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps({"apiKey": "LLM|cache-key", "accountId": "uid-1"}))
+    monkeypatch.setenv("MUSE_CODE_SUB_CREDENTIALS", str(cache))
+    _, registered = _load_plugin()
+    profile = registered["muse-code"]
+    seen = {}
+
+    def fake_fetch(self, **kwargs):
+        seen.update(kwargs)
+        return ["muse-spark-1.3"]
+
+    with patch.object(type(profile).__mro__[1], "fetch_models", fake_fetch):
+        assert profile.fetch_models(api_key="LLM|explicit-key") == ["muse-spark-1.3"]
+    assert seen.get("api_key") == "LLM|explicit-key"
+
+
 def test_register_entry_point_is_probe_safe(tmp_path, monkeypatch):
     monkeypatch.setenv("MUSE_CODE_SUB_CREDENTIALS", str(tmp_path / "c.json"))
     module, registered = _load_plugin(env={"MUSE_CODE_SUB_TOKEN": "pinned"})
